@@ -11,7 +11,7 @@ def visualize_patch(*args, **kwargs):
     pass
 
 from timm.models.vision_transformer import DropPath, Mlp
-from pixelloss import PixelLoss
+from .pixelloss import PixelLoss
 
 
 def mask_by_order(mask_len, order, bsz, seq_len):
