@@ -77,81 +77,67 @@ if torch.cuda.is_available():
     print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 ```
 
-### 2.3 Cell 2: 下载 Tiny ImageNet
+### 2.3 Cell 2: 下载 Tiny ImageNet（Stanford 源）
 
 ```python
 # ═══════════════════════════════════════════════════════
 # Cell 2: 下载 Tiny ImageNet (200 类, 100K 训练集)
+# 从 Stanford 源下载，国内直接可访问
 # ═══════════════════════════════════════════════════════
 
-import os
-from datasets import load_dataset
-from PIL import Image
-from tqdm.auto import tqdm
+import os, urllib.request, zipfile, shutil
 
-# Install datasets
-!pip install -q datasets
+DATA_DIR = './data'
+os.makedirs(DATA_DIR, exist_ok=True)
 
-DATA_DIR = './data/tiny-imagenet-200'
+ZIP_PATH = f"{DATA_DIR}/tiny-imagenet-200.zip"
+SRC = f"{DATA_DIR}/tiny-imagenet-200"
 
-def download_tiny_imagenet():
-    """Download Tiny ImageNet from HuggingFace as ImageFolder."""
-    
-    os.makedirs(f'{DATA_DIR}/train', exist_ok=True)
-    os.makedirs(f'{DATA_DIR}/val', exist_ok=True)
-    
-    # ── Train set ──
-    print("Downloading train set...")
-    train_ds = load_dataset('zh-plus/tiny-imagenet', split='train', streaming=True)
-    
-    class_names = set()
-    made_dirs = set()
-    class_indices = {}
-    
-    for sample in tqdm(train_ds, total=100000, desc='Train'):
-        img = sample['image']
-        label = sample['label']
-        
-        # Create class directory
-        class_dir = f'{DATA_DIR}/train/{label}'
-        if class_dir not in made_dirs:
-            os.makedirs(class_dir, exist_ok=True)
-            made_dirs.add(class_dir)
-            class_indices[label] = 0
-        
-        # Save image
-        idx = class_indices[label]
-        img.save(f'{class_dir}/{idx:08d}.JPEG')
-        class_indices[label] += 1
-        class_names.add(label)
-    
-    # ── Val set ──
-    print("Downloading val set...")
-    val_ds = load_dataset('zh-plus/tiny-imagenet', split='valid', streaming=True)
-    
-    made_dirs_val = set()
-    class_indices_val = {}
-    
-    for sample in tqdm(val_ds, total=10000, desc='Val'):
-        img = sample['image']
-        label = sample['label']
-        
-        class_dir = f'{DATA_DIR}/val/{label}'
-        if class_dir not in made_dirs_val:
-            os.makedirs(class_dir, exist_ok=True)
-            made_dirs_val.add(class_dir)
-            class_indices_val[label] = 0
-        
-        idx = class_indices_val[label]
-        img.save(f'{class_dir}/{idx:08d}.JPEG')
-        class_indices_val[label] += 1
-    
-    print(f"Done! {len(class_names)} classes downloaded.")
-    return len(class_names)
+# ── 下载 (500MB) ──
+if not os.path.exists(ZIP_PATH):
+    url = "http://cs231n.stanford.edu/tiny-imagenet-200.zip"
+    print("Downloading Tiny ImageNet (500MB)...")
+    urllib.request.urlretrieve(url, ZIP_PATH)
+else:
+    print("Zip already downloaded.")
 
-num_classes = download_tiny_imagenet()
-print(f"Classes: {num_classes}")
+# ── 解压 ──
+if not os.path.exists(SRC):
+    print("Extracting...")
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zf:
+        zf.extractall(DATA_DIR)
+else:
+    print("Already extracted.")
+
+# ── 重组 train: train/class/images/* → train/class/* ──
+print("Reorganizing train...")
+for cls in os.listdir(f"{SRC}/train"):
+    img_dir = f"{SRC}/train/{cls}/images"
+    if os.path.exists(img_dir):
+        for img in os.listdir(img_dir):
+            shutil.move(f"{img_dir}/{img}", f"{SRC}/train/{cls}/{img}")
+        os.rmdir(img_dir)
+
+# ── 重组 val: val/images/* → val/class/* ──
+print("Reorganizing val...")
+val_dir = f"{SRC}/val"
+with open(f"{val_dir}/val_annotations.txt") as f:
+    annotations = [l.strip().split('\t') for l in f]
+
+for img_name, class_id, *_ in annotations:
+    dst_dir = f"{val_dir}/{class_id}"
+    os.makedirs(dst_dir, exist_ok=True)
+    shutil.move(f"{val_dir}/images/{img_name}", f"{dst_dir}/{img_name}")
+
+shutil.rmtree(f"{val_dir}/images")
+os.remove(f"{val_dir}/val_annotations.txt")
+
+n_train = len(os.listdir(f"{SRC}/train"))
+n_val = len(os.listdir(f"{SRC}/val"))
+print(f"Done! Train: {n_train} classes, Val: {n_val} classes")
 ```
+
+> `--data_root` 传入 `./data/tiny-imagenet-200`。
 
 ### 2.4 Cell 3: Phase 1 — L0 粗图预训练
 
@@ -339,48 +325,52 @@ source venv/bin/activate
 
 # 2. 安装依赖
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install tensorboard timm pillow tqdm numpy scipy datasets
+pip install tensorboard timm pillow tqdm numpy scipy
 
 # 3. Clone 或复制项目代码
-git clone <your-repo-url> msft-cross-image
+git clone https://github.com/SpencerRaw/msft-cross-image.git msft-cross-image
 cd msft-cross-image
 ```
 
 ### 3.2 下载数据
 
 ```bash
-# 方法 A: HuggingFace (推荐)
+# 方法 A: Stanford 源 (国内可用)
 python -c "
-from datasets import load_dataset
-from PIL import Image
-from tqdm.auto import tqdm
-import os
+import os, urllib.request, zipfile, shutil
 
-DATA_DIR = './data/tiny-imagenet-200'
-os.makedirs(f'{DATA_DIR}/train', exist_ok=True)
-os.makedirs(f'{DATA_DIR}/val', exist_ok=True)
+DATA_DIR = './data'
+os.makedirs(DATA_DIR, exist_ok=True)
+SRC = f'{DATA_DIR}/tiny-imagenet-200'
 
-# Train
-ds = load_dataset('zh-plus/tiny-imagenet', split='train', streaming=True)
-made = set()
-cnt = {}
-for s in tqdm(ds, total=100000):
-    d = f'{DATA_DIR}/train/{s[\"label\"]}'
-    if d not in made:
-        os.makedirs(d, exist_ok=True); made.add(d); cnt[s['label']] = 0
-    s['image'].save(f'{d}/{cnt[s[\"label\"]]:08d}.JPEG')
-    cnt[s['label']] += 1
+# 下载+解压
+if not os.path.exists(SRC):
+    url = 'http://cs231n.stanford.edu/tiny-imagenet-200.zip'
+    print('Downloading...')
+    urllib.request.urlretrieve(url, f'{DATA_DIR}/tiny-imagenet-200.zip')
+    print('Extracting...')
+    from zipfile import ZipFile
+    with ZipFile(f'{DATA_DIR}/tiny-imagenet-200.zip', 'r') as zf:
+        zf.extractall(DATA_DIR)
 
-# Val
-ds = load_dataset('zh-plus/tiny-imagenet', split='valid', streaming=True)
-made = set(); cnt = {}
-for s in tqdm(ds, total=10000):
-    d = f'{DATA_DIR}/val/{s[\"label\"]}'
-    if d not in made:
-        os.makedirs(d, exist_ok=True); made.add(d); cnt[s['label']] = 0
-    s['image'].save(f'{d}/{cnt[s[\"label\"]]:08d}.JPEG')
-    cnt[s['label']] += 1
-print('Done!')
+# 重组 train
+for cls in os.listdir(f'{SRC}/train'):
+    img_dir = f'{SRC}/train/{cls}/images'
+    if os.path.exists(img_dir):
+        for img in os.listdir(img_dir):
+            shutil.move(f'{img_dir}/{img}', f'{SRC}/train/{cls}/{img}')
+        os.rmdir(img_dir)
+
+# 重组 val
+val_dir = f'{SRC}/val'
+with open(f'{val_dir}/val_annotations.txt') as f:
+    ann = [l.strip().split('\t') for l in f]
+for img_name, class_id, *_ in ann:
+    dst = f'{val_dir}/{class_id}'; os.makedirs(dst, exist_ok=True)
+    shutil.move(f'{val_dir}/images/{img_name}', f'{dst}/{img_name}')
+shutil.rmtree(f'{val_dir}/images')
+os.remove(f'{val_dir}/val_annotations.txt')
+print(f'Done! {len(os.listdir(SRC + \"/train\"))} train, {len(os.listdir(SRC + \"/val\"))} val classes')
 "
 ```
 
