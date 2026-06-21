@@ -523,11 +523,7 @@ class FractalGenMSFT(nn.Module):
                 # generated_patch: (num_to_pred, 3, 4, 4)
                 
                 # Place back
-                # Nuclear option: numpy bypass for PyTorch 2.11 stride bug
-                arr = generated_patch.detach().cpu().numpy()
-                generated_flat = torch.from_numpy(arr.reshape(num_to_pred, -1)).to(
-                    device=generated_patch.device, dtype=generated_patch.dtype
-                )
+                generated_flat = generated_patch.view(num_to_pred, -1)  # (num_to_pred, 48)
                 
                 if cfg != 1.0:
                     mask_to_pred_orig, _ = mask_to_pred.chunk(2, dim=0)
@@ -620,14 +616,14 @@ class FractalGenMSFT(nn.Module):
             
             patches_l1 = cur_patches.clone()
         
+        # Build output (N, 3, 4, 4) directly — avoid permute entirely
         if cfg != 1.0:
             patches_l1 = patches_l1[:N]
-        
-        # Unpatchify: (N, 16, 3) → (N, 3, 4, 4)
-        # Nuclear option: numpy bypass for PyTorch 2.11 stride bug
-        arr = patches_l1[:N].reshape(N, 4, 4, 3).permute(0, 3, 1, 2).detach().cpu().numpy()
-        patches_l1 = torch.from_numpy(arr.copy()).to(device=patches_l1.device, dtype=patches_l1.dtype)
-        return patches_l1
+        out = torch.zeros(N, 3, 4, 4, device=patches_l1.device, dtype=patches_l1.dtype)
+        for h in range(4):
+            for w in range(4):
+                out[:, :, h, w] = patches_l1[:N, h * 4 + w, :]
+        return out
 
 
 # ═══════════════════════════════════════════════════════════════════════
