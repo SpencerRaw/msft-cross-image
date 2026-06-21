@@ -523,7 +523,7 @@ class FractalGenMSFT(nn.Module):
                 # generated_patch: (num_to_pred, 3, 4, 4)
                 
                 # Place back
-                generated_flat = generated_patch.contiguous().reshape(num_to_pred, -1)  # (num_to_pred, 48)
+                generated_flat = torch.flatten(generated_patch, start_dim=1)  # (num_to_pred, 48)
                 
                 if cfg != 1.0:
                     mask_to_pred_orig, _ = mask_to_pred.chunk(2, dim=0)
