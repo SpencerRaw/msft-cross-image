@@ -643,13 +643,15 @@ def main():
     parser.add_argument('--pairing_mode', type=str, default=None,
                        choices=['same_class', 'same_image', 'random'],
                        help='Data pairing mode')
+    parser.add_argument('--num_workers', type=int, default=None,
+                       help='DataLoader workers (overrides config)')
     
     args = parser.parse_args()
     
     # Load config and apply CLI overrides
     config = get_default_config()
     for key in ['model_size', 'batch_size', 'epochs', 'lr', 'output_dir', 
-                'device', 'pairing_mode', 'data_root']:
+                'device', 'pairing_mode', 'data_root', 'num_workers']:
         val = getattr(args, key, None)
         if val is not None:
             config[key] = val
