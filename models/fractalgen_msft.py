@@ -523,7 +523,7 @@ class FractalGenMSFT(nn.Module):
                 # generated_patch: (num_to_pred, 3, 4, 4)
                 
                 # Place back
-                generated_flat = generated_patch.reshape(num_to_pred, -1)  # (num_to_pred, 48)
+                generated_flat = generated_patch.contiguous().reshape(num_to_pred, -1)  # (num_to_pred, 48)
                 
                 if cfg != 1.0:
                     mask_to_pred_orig, _ = mask_to_pred.chunk(2, dim=0)
@@ -620,7 +620,7 @@ class FractalGenMSFT(nn.Module):
             patches_l1 = patches_l1[:N]
         
         # Unpatchify: (N, 16, 3) → (N, 3, 4, 4)
-        patches_l1 = patches_l1.reshape(N, 4, 4, 3).permute(0, 3, 1, 2)
+        patches_l1 = patches_l1.reshape(N, 4, 4, 3).permute(0, 3, 1, 2).contiguous()
         return patches_l1
 
 
