@@ -523,7 +523,22 @@ class FractalGenMSFT(nn.Module):
                 # generated_patch: (num_to_pred, 3, 4, 4)
                 
                 # Place back
-                generated_flat = generated_patch.view(num_to_pred, -1)  # (num_to_pred, 48)
+                # DEBUG
+                import sys
+                print(f"[DEBUG] generated_patch: shape={generated_patch.shape}, "
+                      f"stride={generated_patch.stride()}, "
+                      f"is_contiguous={generated_patch.is_contiguous()}, "
+                      f"num_to_pred={num_to_pred}, "
+                      f"numel={generated_patch.numel()}",
+                      file=sys.stderr, flush=True)
+                
+                # Brute-force copy to contiguous
+                flat = torch.zeros(num_to_pred, 48, device=generated_patch.device, dtype=generated_patch.dtype)
+                for c in range(3):
+                    for r in range(4):
+                        for cc in range(4):
+                            flat[:, c*16 + r*4 + cc] = generated_patch[:, c, r, cc]
+                generated_flat = flat
                 
                 if cfg != 1.0:
                     mask_to_pred_orig, _ = mask_to_pred.chunk(2, dim=0)

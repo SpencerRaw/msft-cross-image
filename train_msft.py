@@ -65,6 +65,7 @@ def get_default_config():
         # Training
         'batch_size': 64,
         'num_workers': 4,
+        'accum_steps': 1,         # gradient accumulation steps
         'lr': 5e-4,
         'lr_min': 1e-6,
         'weight_decay': 0.05,
@@ -196,16 +197,18 @@ def train_phase1(args, config):
             coarse = batch['coarse'].to(config['device'])
             labels = batch['labels'].to(config['device'])
             
-            optimizer.zero_grad()
-            
             with torch.cuda.amp.autocast(enabled=config['use_amp']):
                 loss = wrapper(coarse, labels)
             
+            loss = loss / config['accum_steps']
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(wrapper.parameters(), config['grad_clip'])
-            optimizer.step()
             
-            epoch_loss += loss.item()
+            if (batch_idx + 1) % config['accum_steps'] == 0:
+                torch.nn.utils.clip_grad_norm_(wrapper.parameters(), config['grad_clip'])
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            epoch_loss += loss.item() * config['accum_steps']
             global_step += 1
             
             if batch_idx % 50 == 0:
@@ -330,20 +333,22 @@ def train_phase2(args, config):
             positions = batch['positions'].to(config['device'])
             labels = batch['labels'].to(config['device'])
             
-            optimizer.zero_grad()
-            
             with torch.cuda.amp.autocast(enabled=config['use_amp']):
                 losses = model(coarse, fine, positions, labels)
                 loss = losses['loss_total']
             
+            loss = loss / config['accum_steps']
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                filter(lambda p: p.requires_grad, model.parameters()),
-                config['grad_clip']
-            )
-            optimizer.step()
             
-            epoch_loss += loss.item()
+            if (batch_idx + 1) % config['accum_steps'] == 0:
+                torch.nn.utils.clip_grad_norm_(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    config['grad_clip']
+                )
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            epoch_loss += loss.item() * config['accum_steps']
             epoch_loss_l0 += losses['loss_l0'].item()
             epoch_loss_pixel += losses['loss_pixel'].item()
             global_step += 1
@@ -470,17 +475,19 @@ def train_phase3(args, config):
             positions = batch['positions'].to(config['device'])
             labels = batch['labels'].to(config['device'])
             
-            optimizer.zero_grad()
-            
             with torch.cuda.amp.autocast(enabled=config['use_amp']):
                 losses = model(coarse, fine, positions, labels)
                 loss = losses['loss_total']
             
+            loss = loss / config['accum_steps']
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config['grad_clip'])
-            optimizer.step()
             
-            epoch_loss += loss.item()
+            if (batch_idx + 1) % config['accum_steps'] == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config['grad_clip'])
+                optimizer.step()
+                optimizer.zero_grad()
+            
+            epoch_loss += loss.item() * config['accum_steps']
             epoch_loss_l0 += losses['loss_l0'].item()
             epoch_loss_pixel += losses['loss_pixel'].item()
             epoch_loss_consist += losses['loss_consistency'].item()
@@ -645,13 +652,15 @@ def main():
                        help='Data pairing mode')
     parser.add_argument('--num_workers', type=int, default=None,
                        help='DataLoader workers (overrides config)')
+    parser.add_argument('--accum_steps', type=int, default=None,
+                       help='Gradient accumulation steps')
     
     args = parser.parse_args()
     
     # Load config and apply CLI overrides
     config = get_default_config()
     for key in ['model_size', 'batch_size', 'epochs', 'lr', 'output_dir', 
-                'device', 'pairing_mode', 'data_root', 'num_workers']:
+                'device', 'pairing_mode', 'data_root', 'num_workers', 'accum_steps']:
         val = getattr(args, key, None)
         if val is not None:
             config[key] = val
