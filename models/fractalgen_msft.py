@@ -23,17 +23,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ── Add original FractalGen to path ──
-_FRACTALGEN_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'fractalgen'
-)
-if _FRACTALGEN_PATH not in sys.path:
-    sys.path.insert(0, _FRACTALGEN_PATH)
-
-from models.mar import MAR
-from models.ar import AR
-from models.pixelloss import PixelLoss
+from .mar import MAR
+from .ar import AR
+from .pixelloss import PixelLoss
 
 
 # ═══════════════════════════════════════════════════════════════════════
